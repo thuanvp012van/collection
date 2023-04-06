@@ -363,28 +363,63 @@ class Arr
         return self::getValue($default);
     }
 
+    /**
+     * Sort the array.
+     * 
+     * @param int $options
+     * @param bool $descending
+     * @return static
+     */
     public static function sort(array &$array, bool $descending = false, int $options = SORT_REGULAR): bool
     {
-        if ($descending) {
-            return rsort($array, $options);
-        }
-        return sort($array, $options);
+        return $descending ? rsort($array, $options) : sort($array, $options);
     }
 
+    /**
+     * Sort the array keys.
+     * 
+     * @param int $options
+     * @param bool $descending
+     * @return static
+     */
+    public static function sortKeys(array &$array, bool $descending = false, int $options = SORT_REGULAR): bool
+    {
+        return $descending ? krsort($array, $options) : ksort($array, $options);
+    }
+
+    /**
+     * Searches the array for a given value and returns the first corresponding key if successful.
+     * 
+     * @param int|string|callable $callback
+     * @param bool $strict
+     * @return int|string|false
+     */
     public static function search(callable $callback, iterable $item, bool $strict = false): int|string|false
     {
         $item = self::getArrayableItems($item);
         return array_search($callback, $item, $strict);
     }
 
+    /**
+     * Exchanges all keys with their associated values in an array.
+     * 
+     * @param iterable $item
+     * @return array
+     */
     public static function flip(iterable $item): array
     {
         return array_flip(self::getArrayableItems($item));
     }
 
-    public static function query(array $array): string
+    /**
+     * Generate URL-encoded query string
+     * 
+     * @param iterable $item
+     * @return string
+     */
+    public static function query(iterable $item): string
     {
-        return http_build_query($array, '', '&', PHP_QUERY_RFC3986);
+        return http_build_query(self::getArrayableItems($item), '', '&', PHP_QUERY_RFC3986);
     }
 
     public static function where(array $array, callable $callback): array

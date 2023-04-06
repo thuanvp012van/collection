@@ -733,6 +733,13 @@ class Collection implements Enumerable
         
     // }
 
+    /**
+     * Search the collection for a given value and return the corresponding key if successful.
+     * 
+     * @param int|string|callable $callback
+     * @param bool $strict
+     * @return int|string|false
+     */
     public function search(int|string|callable $callback, bool $strict = false): int|string|false
     {
         if (is_callable($callback)) {
@@ -1044,6 +1051,31 @@ class Collection implements Enumerable
     public function sortByDesc(string|callable $callback, int $options = SORT_REGULAR): static
     {
         return $this->sortBy($callback, $options);
+    }
+
+    /**
+     * Sort the collection keys.
+     * 
+     * @param int $options
+     * @param bool $descending
+     * @return static
+     */
+    public function sortKeys(int $options = SORT_REGULAR, bool $descending = false): static
+    {
+        $sorted = $this->items;
+        Arr::sortKeys($sorted, $descending, $options);
+        return new static($sorted);
+    }
+
+    /**
+     * Sort the collection keys in descending order.
+     * 
+     * @param int $options
+     * @return static
+     */
+    public function sortKeysDesc(int $options = SORT_REGULAR): static
+    {
+        return $this->sortKeys($options, true);
     }
 
     public function groupBy(string|callable ...$keys): static
