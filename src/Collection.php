@@ -298,6 +298,12 @@ class Collection implements Enumerable
         return $count > 0 ? $this->sum($key) / $this->count($key) : null;
     }
 
+    /**
+     * Find highest value in the collection
+     * 
+     * @param string|callback $callback
+     * @return mixed
+     */
     public function max(string|callable $callback = null): mixed
     {
         if ($callback === null) {
@@ -324,6 +330,12 @@ class Collection implements Enumerable
         return $max;
     }
 
+    /**
+     * Find lowest value in the collection
+     * 
+     * @param string|callback $callback
+     * @return mixed
+     */
     public function min(string|callable $callback = null): mixed
     {
         if ($callback === null) {
@@ -350,6 +362,12 @@ class Collection implements Enumerable
         return $min;
     }
 
+    /**
+     * Find median value in the collection
+     * 
+     * @param string|callback $callback
+     * @return float|int|null
+     */
     public function median(string|callable $callback = null): float|int|null
     {
         if ($callback === null) {
@@ -684,6 +702,7 @@ class Collection implements Enumerable
     /**
      * Return an collection with elements in reverse order.
      * 
+     * @param bool $preserveKeys
      * @return static
      */
     public function reverse(bool $preserveKeys = false): static
@@ -1082,11 +1101,23 @@ class Collection implements Enumerable
     {
     }
 
+    /**
+     * Get the items with the specified keys.
+     * 
+     * @param string|int ...$keys
+     * @return static
+     */
     public function only(string|int ...$keys): static
     {
         return new static(Arr::only($this->items, ...$keys));
     }
 
+    /**
+     * Set the item in the collection.
+     * 
+     * @param mixed $offset
+     * @param mixed $value
+     */
     public function offsetSet(mixed $offset, mixed $value): void
     {
         if (is_null($offset)) {
@@ -1096,39 +1127,57 @@ class Collection implements Enumerable
         }
     }
 
+    /**
+     * Determine if an item exists in the collection.
+     * 
+     * @param mixed $offset
+     * @return bool
+     */
     public function offsetExists(mixed $offset): bool
     {
         return isset($this->items[$offset]);
     }
 
+    /**
+     * Unset the item in the collection.
+     * 
+     * @param mixed $offset
+     * @return void
+     */
     public function offsetUnset(mixed $offset): void
     {
         unset($this->items[$offset]);
     }
 
-    public function offsetGet($offset): mixed
+    /**
+     * Get an item in the collection.
+     * 
+     * @param mixed $offset
+     * @return mixed
+     */
+    public function offsetGet(mixed $offset): mixed
     {
         return $this->items[$offset];
     }
 
+    /**
+     * Get an iterator for the items.
+     * 
+     * @return ArrayIterator
+     */
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->items);
     }
 
+    /**
+     * Specify data which should be serialized to JSON.
+     * 
+     * @return array
+     */
     public function jsonSerialize(): array
     {
         return $this->toArray();
-    }
-
-    public function __serialize(): array
-    {
-        return $this->items;
-    }
-
-    public function __unserialize(array $data): void
-    {
-        $this->items = $data;
     }
 
     /**
@@ -1176,6 +1225,14 @@ class Collection implements Enumerable
         return $result;
     }
 
+    /**
+     * Add sort function.
+     * 
+     * @param Collection $collection
+     * @param callable $callback
+     * @param bool $append
+     * @return void
+     */
     protected function setSort(Collection $collection, callable $callback, bool $append = false): void
     {
         $reflectionProperty = new ReflectionProperty($collection, 'sorts');
