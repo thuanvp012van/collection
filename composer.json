@@ -26,7 +26,6 @@
     },
     "require": {
         "php": "^8.1",
-        "symfony/var-dumper": "^6.1",
         "penguin/plug": "^1.0"
     },
     "require-dev": {

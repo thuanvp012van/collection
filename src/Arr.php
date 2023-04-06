@@ -30,12 +30,12 @@ class Arr
         if (!str_contains($key, '.')) {
             return self::getValue($default);
         }
-        
+
         foreach (self::extractKey($key) as $segment) {
             if (isset($array[$segment])) {
                 $array = $array[$segment];
             } else {
-                return self::getValue($default); 
+                return self::getValue($default);
             }
         }
         return $array;
@@ -173,7 +173,6 @@ class Arr
 
     public static function exists(ArrayAccess|array $array, string|int $key): bool
     {
-        
     }
 
     public static function remove(array &$array, string|int $key): void
@@ -193,7 +192,7 @@ class Arr
     {
         if ($callback !== null) {
             $array = Arr::map($callback, $array);
-        }   
+        }
         return array_count_values($array);
     }
 
@@ -258,6 +257,22 @@ class Arr
         return array_replace_recursive(...$arrays);
     }
 
+    public static function only(iterable $array, string|int ...$keys): array
+    {
+        $array = self::getArrayableItems($array);
+        return array_intersect_key($array, array_flip($keys));
+    }
+
+    public static function max(mixed ...$items): mixed
+    {
+        return max(...$items);
+    }
+
+    public static function min(mixed ...$items): mixed
+    {
+        return min(...$items);
+    }
+
     /**
      * Applies the callback to the elements of the given arrays.
      * 
@@ -274,6 +289,36 @@ class Arr
             $items = array_map($callback, $array);
         }
         return array_combine($keys, $items);
+    }
+
+    /**
+     * Merge one or more items.
+     * 
+     * @param iterable ...$items
+     * @return array
+     */
+    public static function merge(iterable ...$items): array
+    {
+        foreach ($items as &$item) {
+            $item = self::getArrayableItems($item);
+        }
+        unset($item);
+        return (array) array_merge(...$items);
+    }
+
+    /**
+     * Merge one or more items recursively.
+     * 
+     * @param iterable ...$items
+     * @return array
+     */
+    public static function mergeRecursive(iterable ...$items): array
+    {
+        foreach ($items as &$item) {
+            $item = self::getArrayableItems($item);
+        }
+        unset($item);
+        return (array) array_merge_recursive(...$items);
     }
 
     public static function unique(iterable $items, int $flags = SORT_STRING): array
@@ -318,7 +363,7 @@ class Arr
         return self::getValue($default);
     }
 
-    public static function sort(array $array, bool $descending = false, int $options = SORT_REGULAR): bool
+    public static function sort(array &$array, bool $descending = false, int $options = SORT_REGULAR): bool
     {
         if ($descending) {
             return rsort($array, $options);
@@ -326,9 +371,15 @@ class Arr
         return sort($array, $options);
     }
 
-    public static function flip(array $array): array
+    public static function search(callable $callback, iterable $item, bool $strict = false): int|string|false
     {
-        return array_flip($array);
+        $item = self::getArrayableItems($item);
+        return array_search($callback, $item, $strict);
+    }
+
+    public static function flip(iterable $item): array
+    {
+        return array_flip(self::getArrayableItems($item));
     }
 
     public static function query(array $array): string

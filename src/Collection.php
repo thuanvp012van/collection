@@ -8,7 +8,7 @@ use ArrayIterator;
 use ReflectionProperty;
 use Traversable;
 
-class Collection implements CollectionInterface
+class Collection implements Enumerable
 {
     use Plug;
     use EnumeratesValues;
@@ -123,6 +123,30 @@ class Collection implements CollectionInterface
     }
 
     /**
+     * Get and remove the last N items from the collection.
+     * 
+     * @param int $count
+     * @return mixed
+     */
+    public function pop(int $count = 1): mixed
+    {
+        if ($count === 1) {
+            return array_pop($this->items);
+        }
+
+        if ($this->isEmpty()) {
+            return new static;      
+        }
+
+        $results = [];
+        foreach (range(1, Arr::min($count, $this->count())) as $items) {
+            $results[] = array_pop($this->items);
+        }
+
+        return new static($results);
+    }
+
+    /**
      * Remove an item from the collection by key.
      * 
      * @param string|int ...$keys
@@ -174,7 +198,7 @@ class Collection implements CollectionInterface
      */
     public function keys(): static
     {
-        return new static(array_keys($this->items));
+        return new static(Arr::keys($this->items));
     }
 
     /**
@@ -184,7 +208,7 @@ class Collection implements CollectionInterface
      */
     public function values(): static
     {
-        return new static(array_values($this->items));
+        return new static(Arr::values($this->items));
     }
 
     /**
@@ -274,6 +298,76 @@ class Collection implements CollectionInterface
         return $count > 0 ? $this->sum($key) / $this->count($key) : null;
     }
 
+    public function max(string|callable $callback = null): mixed
+    {
+        if ($callback === null) {
+            return Arr::max($this->items);
+        }
+
+        if (is_string($callback)) {
+            $segments = $this->extractKey($callback);
+            $callback = function ($item) use ($segments) {
+                $childItem = $this->getItemRecursive($item, $segments);
+                return $item !== $childItem ? $childItem : null;
+            };
+        }
+
+        $max = null;
+        $this->each(function ($item, $key) use (&$max, &$callback) {
+            if ($max === null) {
+                $max = $callback($item, $key);
+            } else {
+                $item = $callback($item, $key);
+                $max = $item > $max ? $item : $max;
+            }
+        });
+        return $max;
+    }
+
+    public function min(string|callable $callback = null): mixed
+    {
+        if ($callback === null) {
+            return Arr::min($this->items);
+        }
+
+        if (is_string($callback)) {
+            $segments = $this->extractKey($callback);
+            $callback = function ($item) use ($segments) {
+                $childItem = $this->getItemRecursive($item, $segments);
+                return $item !== $childItem ? $childItem : null;
+            };
+        }
+
+        $min = null;
+        $this->each(function ($item, $key) use (&$min, &$callback) {
+            if ($min === null) {
+                $min = $callback($item, $key);
+            } else {
+                $item = $callback($item, $key);
+                $min = $item > $min ? $min : $item;
+            }
+        });
+        return $min;
+    }
+
+    public function median(string|callable $callback = null): float|int|null
+    {
+        if ($callback === null) {
+            $values = $this->sort();
+        } else {
+            $values = $this->map($callback)->sort();
+        }
+
+        $count = $this->count();
+        $middle = (int)($count / 2);
+
+        if ($count % 2) {
+            return $values->get($middle);
+        }
+
+        return ($values->get($middle - 1) + $values->get($middle)) / 2;
+    }
+
     /**
      * Get the mode of a given key.
      * 
@@ -296,6 +390,39 @@ class Collection implements CollectionInterface
         }
         $countValues = array_count_values($values);
         return array_keys($countValues, max($countValues));
+    }
+
+    /**
+     * Merge the collection with the given items.
+     * 
+     * @param mixed $item
+     * @return static
+     */
+    public function merge(mixed $item): static
+    {
+        return new static(Arr::merge($this->items, $this->getArrayableItems($item)));
+    }
+
+    /**
+     * Recursively merge the collection with the given items.
+     * 
+     * @param mixed $item
+     * @return static
+     */
+    public function mergeRecursive(mixed $item): static
+    {
+        return new static(Arr::mergeRecursive($this->items, $this->getArrayableItems($item)));
+    }
+
+    /**
+     * Run a map over each of the items.
+     * 
+     * @param callable $callback
+     * @return static
+     */
+    public function map(callable $callback): static
+    {
+        return new static(Arr::map($callback, $this->items));
     }
 
     /**
@@ -616,9 +743,9 @@ class Collection implements CollectionInterface
             }
             return false;
         }
-        return array_search($callback, $this->items, $strict);
+        return Arr::search($callback, $this->items, $strict);
     }
-    
+
     /**
      * Get and remove the first N items from the collection.
      * 
@@ -838,22 +965,6 @@ class Collection implements CollectionInterface
     }
 
     /**
-     * Run a map over each of the items.
-     * 
-     * @param callable $callback
-     * @return static
-     */
-    public function map(callable $callback): static
-    {
-        return new static(Arr::map($callback, $this->items));
-    }
-
-    public function mapSpread(): static
-    {
-
-    }
-
-    /**
      * Run a filter over each of the items.
      * 
      * @param callable $callback
@@ -873,7 +984,9 @@ class Collection implements CollectionInterface
      */
     public function sort(int $options = SORT_REGULAR, bool $descending = false): static
     {
-        return new static(Arr::sort($this->items, $descending, $options));
+        $sorted = $this->items;
+        Arr::sort($sorted, $descending, $options);
+        return new static($sorted);
     }
 
     /**
@@ -899,7 +1012,7 @@ class Collection implements CollectionInterface
     {
         if (is_string($callback)) {
             $segments = $this->extractKey($callback);
-            $callback = function($item) use ($segments) {
+            $callback = function ($item) use ($segments) {
                 $childItem = $this->getItemRecursive($item, $segments);
                 return $childItem === $item ? null : $childItem;
             };
@@ -932,48 +1045,14 @@ class Collection implements CollectionInterface
     {
         return $this->sortBy($callback, $options);
     }
-    
+
     public function groupBy(string|callable ...$keys): static
     {
-
     }
 
-    /**
-     * Apply the callback if the given "value" is (or resolves to) truthy.
-     * 
-     * @param bool $value
-     * @param callable $callback
-     * @param callable $default
-     * @return $this
-     */
-    public function when(bool $value, callable $callback, callable $default = null): static
+    public function only(string|int ...$keys): static
     {
-        $value ? $callback($this) : ($default === null ? null : $default($this));
-        return $this;
-    }
-
-    /**
-     * Apply the callback if the collection is empty.
-     * 
-     * @param callable $callback
-     * @param callable $default
-     * @return $this
-     */
-    public function whenEmpty(callable $callback, callable $default = null): static
-    {
-        return $this->when($this->isEmpty(), $callback, $default);
-    }
-
-    /**
-     * Apply the callback if the collection is not empty.
-     * 
-     * @param callable $callback
-     * @param callable $default
-     * @return $this
-     */
-    public function whenNotEmpty(callable $callback, callable $default = null): static
-    {
-        return $this->when($this->isNotEmpty(), $callback, $default);
+        return new static(Arr::only($this->items, ...$keys));
     }
 
     public function offsetSet(mixed $offset, mixed $value): void

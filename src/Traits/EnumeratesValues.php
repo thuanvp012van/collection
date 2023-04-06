@@ -5,12 +5,90 @@ namespace Penguin\Component\Collection\Traits;
 use Closure;
 use JsonSerializable;
 use LogicException;
+use Penguin\Component\Collection\Arr;
 use Penguin\Component\Collection\Collection;
 use Traversable;
 use UnitEnum;
 
 trait EnumeratesValues
 {
+    /**
+     * Reduce the collection to a single value.
+     * 
+     * @param callable $callback
+     * @param mixed $initial
+     * @return mixed
+     */
+    public function reduce(callable $callback, mixed $initial = null): mixed
+    {
+        $result = $initial;
+
+        foreach ($this->all() as $key => $value) {
+            $result = $callback($result, $value, $key);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Create a collection of all elements that do not pass a given truth test.
+     * 
+     * @param callable $callback
+     * @return static
+     */
+    public function reject(callable $callback): static
+    {
+        return $this->filter(function ($item, $key) use ($callback) {
+            return !$callback($item, $key);
+        });
+    }
+
+    /**
+     * Run a map over each nested chunk of items.
+     *
+     * @param callable $callback
+     * @return static
+     */
+    public function mapSpread(callable $callback): static
+    {
+        return new static(Arr::map(function ($chunk, $key) use ($callback) {
+            $chunk[] = $key;
+
+            return $callback(...$chunk);
+        }, $this->items));
+    }
+
+    /**
+     * Create a new collection consisting of every n-th element.
+     * 
+     * @param int $step
+     * @param int $offset
+     * @param static
+     */
+    public function nth(int $step, int $offset = 0): static
+    {
+        $new = [];
+        $position = 0;
+        foreach ($this->slice($offset)->items as $item) {
+            if ($position % $step === 0) {
+                $new[] = $item;
+            }
+            $position++;
+        }
+        return new static($new);
+    }
+
+    /**
+     * Pass the collection to the given callback and return the result.
+     * 
+     * @param callable $callback
+     * @return mixed
+     */
+    public function pipe(callable $callback): mixed
+    {
+        return $callback($this);
+    }
+
     /**
      * Filter items by the given key value pair.
      *
@@ -190,7 +268,10 @@ trait EnumeratesValues
             $length = strlen($value);
             return $this->handleWhereLike(
                 $key,
-                $value, '!==', 'false', 'strlen($childItem) - ' . $length,
+                $value,
+                '!==',
+                'false',
+                'strlen($childItem) - ' . $length,
                 $encoding,
                 $strict
             );
@@ -258,6 +339,47 @@ trait EnumeratesValues
         });
     }
 
+    /**
+     * Apply the callback if the given "value" is (or resolves to) truthy.
+     * 
+     * @param bool $value
+     * @param callable $callback
+     * @param callable $default
+     * @return $this
+     */
+    public function when(bool $value, callable $callback, callable $default = null): static
+    {
+        $value ? $callback($this) : ($default === null ? null : $default($this));
+        return $this;
+    }
+
+    /**
+     * Apply the callback if the collection is empty.
+     * 
+     * @param callable $callback
+     * @param callable $default
+     * @return $this
+     */
+    public function whenEmpty(callable $callback, callable $default = null): static
+    {
+        return $this->when($this->isEmpty(), $callback, $default);
+    }
+
+    /**
+     * Apply the callback if the collection is not empty.
+     * 
+     * @param callable $callback
+     * @param callable $default
+     * @return $this
+     */
+    public function whenNotEmpty(callable $callback, callable $default = null): static
+    {
+        return $this->when($this->isNotEmpty(), $callback, $default);
+    }
+
+    /**
+     * Dump the collection and end the script.
+     */
     public function dd(): void
     {
         dd($this);

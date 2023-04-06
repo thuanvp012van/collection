@@ -5,7 +5,7 @@ namespace Penguin\Component\Collection;
 use Penguin\Component\Collection\Traits\EnumeratesValues;
 use Penguin\Component\Plug\Plug;
 
-class LazyCollection implements CollectionInterface
+class LazyCollection implements Enumerable
 {
     use Plug;
     use EnumeratesValues;

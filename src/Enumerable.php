@@ -7,7 +7,7 @@ use Countable;
 use IteratorAggregate;
 use JsonSerializable;
 
-interface CollectionInterface extends ArrayAccess, IteratorAggregate, JsonSerializable, Countable
+interface Enumerable extends ArrayAccess, IteratorAggregate, JsonSerializable, Countable
 {
     /**
      * Get all of the items in the collection.
