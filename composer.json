@@ -16,7 +16,7 @@
             "Penguin\\Component\\Collection\\": "src"
         },
         "files": [
-            "./src/bootstrap.php"
+            "./src/helpers.php"
         ]
     },
     "autoload-dev": {
@@ -25,7 +25,7 @@
         }
     },
     "require": {
-        "php": "^8.1",
+        "php": ">=8.1",
         "penguin/plug": "^1.0"
     },
     "require-dev": {

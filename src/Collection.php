@@ -4,11 +4,13 @@ namespace Penguin\Component\Collection;
 
 use Penguin\Component\Collection\Traits\EnumeratesValues;
 use Penguin\Component\Plug\Plug;
-use ArrayIterator;
+use BadMethodCallException;
 use ReflectionProperty;
+use ArrayIterator;
+use ArrayAccess;
 use Traversable;
 
-class Collection implements Enumerable
+class Collection implements ArrayAccess, Enumerable
 {
     use Plug;
     use EnumeratesValues;
@@ -20,6 +22,17 @@ class Collection implements Enumerable
     public function __construct(mixed $items = [])
     {
         $this->items = $this->getArrayableItems($items);
+    }
+
+    /**
+     * Create a new collection instance.
+     * 
+     * @param mixed $items
+     * @return static
+     */
+    public static function make(mixed $items = []): static
+    {
+        return new static($items);
     }
 
     /**
@@ -51,7 +64,7 @@ class Collection implements Enumerable
     }
 
     /**
-     * Determines if a given key exists in the collection:
+     * Determines if a given key exists in the collection.
      * 
      * @param string|int ...$keys
      * @return bool
@@ -100,8 +113,8 @@ class Collection implements Enumerable
      * Push an item onto the beginning of the collection.
      * 
      * @param mixed $value
-     * @param string|int $key
-     * @return static
+     * @param string|int|null $key
+     * @return $this
      */
     public function prepend(mixed $value, string|int $key = null): static
     {
@@ -135,7 +148,7 @@ class Collection implements Enumerable
         }
 
         if ($this->isEmpty()) {
-            return new static;      
+            return new static;
         }
 
         $results = [];
@@ -202,6 +215,25 @@ class Collection implements Enumerable
     }
 
     /**
+     * Key an associative array by a field or using a callback.
+     *
+     * @param string|callable $keyBy
+     * @return static
+     */
+    public function keyBy(string|callable $keyBy): static
+    {
+        if (is_string($keyBy)) {
+            $segments = $this->explodeKey($keyBy);
+            $keyBy = fn($item) => extract_item($item, $segments);
+        }
+        $results = [];
+        foreach ($this->items as $key => $item) {
+            $results[$keyBy($item, $key)] = $item;
+        }
+        return new static($results);
+    }
+
+    /**
      * Get all values in a collection.
      * 
      * @return static
@@ -212,73 +244,9 @@ class Collection implements Enumerable
     }
 
     /**
-     * Calculate the sum of values in a collection.
-     * 
-     * @param string|int|callable $key
-     * @return int|float
-     */
-    public function sum(string|int|callable $key = null): int|float
-    {
-        if ($key === null) {
-            return array_sum($this->items);
-        }
-
-        $sum = 0;
-        $term = 0;
-        if (is_callable($key)) {
-            foreach ($this->items as $item) {
-                if (is_numeric($term = $key($item))) {
-                    $sum += $term;
-                }
-            }
-            return $sum;
-        }
-
-        $segments = $this->extractKey($key);
-        foreach ($this->items as $item) {
-            if (is_array($item) && is_numeric($term = $this->getItemRecursive($item, $segments))) {
-                $sum += $term;
-            }
-        }
-
-        return $sum;
-    }
-
-    /**
-     * Counts all elements in a collection.
-     * 
-     * @param string|int|callable $key
-     * @return int
-     */
-    public function count(string|int|callable $key = null): int
-    {
-        if ($key === null) {
-            return count($this->items);
-        }
-
-        $count = 0;
-        if (is_callable($key)) {
-            foreach ($this->items as $item) {
-                if ($key($item)) {
-                    $count++;
-                }
-            }
-            return $count;
-        }
-
-        $segments = $this->extractKey($key);
-        foreach ($this->items as $item) {
-            if ($item !== $this->getItemRecursive($item, $segments)) {
-                $count++;
-            }
-        }
-        return $count;
-    }
-
-    /**
      * Count the number of items in the collection by a field or using a callback.
      * 
-     * @param callable $callback
+     * @param callable|null $callback
      * @return static
      */
     public function countBy(callable $callback = null): static
@@ -289,7 +257,7 @@ class Collection implements Enumerable
     /**
      * Get the average value of a given key.
      * 
-     * @param string|int $key
+     * @param string|int|null $key
      * @return int|float|null
      */
     public function avg(string|int $key = null): int|float|null
@@ -299,9 +267,9 @@ class Collection implements Enumerable
     }
 
     /**
-     * Find highest value in the collection
+     * Find highest value in the collection.
      * 
-     * @param string|callback $callback
+     * @param string|callback|null $callback
      * @return mixed
      */
     public function max(string|callable $callback = null): mixed
@@ -311,9 +279,9 @@ class Collection implements Enumerable
         }
 
         if (is_string($callback)) {
-            $segments = $this->extractKey($callback);
+            $segments = $this->explodeKey($callback);
             $callback = function ($item) use ($segments) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 return $item !== $childItem ? $childItem : null;
             };
         }
@@ -331,9 +299,9 @@ class Collection implements Enumerable
     }
 
     /**
-     * Find lowest value in the collection
+     * Find lowest value in the collection.
      * 
-     * @param string|callback $callback
+     * @param string|callback|null $callback
      * @return mixed
      */
     public function min(string|callable $callback = null): mixed
@@ -343,9 +311,9 @@ class Collection implements Enumerable
         }
 
         if (is_string($callback)) {
-            $segments = $this->extractKey($callback);
+            $segments = $this->explodeKey($callback);
             $callback = function ($item) use ($segments) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 return $item !== $childItem ? $childItem : null;
             };
         }
@@ -363,9 +331,9 @@ class Collection implements Enumerable
     }
 
     /**
-     * Find median value in the collection
+     * Find median value in the collection.
      * 
-     * @param string|callback $callback
+     * @param string|callback|null $callback
      * @return float|int|null
      */
     public function median(string|callable $callback = null): float|int|null
@@ -389,16 +357,16 @@ class Collection implements Enumerable
     /**
      * Get the mode of a given key.
      * 
-     * @param string|int $key
+     * @param string|int|null $key
      * @param mixed
      */
     public function mode(string|int $key = null): mixed
     {
         if ($key !== null) {
-            $segments = $this->extractKey($key);
+            $segments = $this->explodeKey($key);
             $values = [];
             foreach ($this->items as $item) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 if ($childItem !== $item) {
                     $values[] = $childItem;
                 }
@@ -454,16 +422,6 @@ class Collection implements Enumerable
     }
 
     /**
-     * Convert all items to array.
-     * 
-     * @return array
-     */
-    public function toArray(): array
-    {
-        return $this->toArrayRecursive($this->items);
-    }
-
-    /**
      * Return the JSON representation of a collection.
      * 
      * @return int $options
@@ -478,7 +436,7 @@ class Collection implements Enumerable
      * Transform each item in the collection using a callback.
      * 
      * @param callable $callback
-     * @return static
+     * @return $this
      */
     public function transform(callable $callback): static
     {
@@ -487,23 +445,89 @@ class Collection implements Enumerable
     }
 
     /**
+     * Take the first or last {$limit} items.
+     *
+     * @param int $limit
+     * @return static
+     */
+    public function take(int $limit): static
+    {
+        return $limit < 0 ? $this->slice($limit, abs($limit)) : $this->slice(0, $limit);
+    }
+
+    /**
+     * Take items in the collection until the given callback return false.
+     * 
+     * @param int|callable $callback
+     * @return static
+     */
+    public function takeUntil(int|callable $callback): static
+    {
+        if (is_int($callback)) {
+            $callback = function ($item) use ($callback) {
+                return $callback <= $item;
+            };
+        }
+        return $this->filter(function ($item, $key) use ($callback) {
+            return !$callback($item, $key);
+        });
+    }
+
+    /**
+     * Take items in the collection until the given callback return true.
+     * 
+     * @param int|callable $callback
+     * @return static
+     */
+    public function takeWhile(int|callable $callback): static
+    {
+        if (is_int($callback)) {
+            $callback = function ($item) use ($callback) {
+                return $callback <= $item;
+            };
+        }
+        return $this->filter(function ($item, $key) use ($callback) {
+            return $callback($item, $key);
+        });
+    }
+
+    /**
+     * Union the collection with the given items.
+     * 
+     * @param mixed $item
+     * @return static
+     */
+    public function union(mixed $item): static
+    {
+        return new static($this->items + $this->getArrayableItems($item));
+    }
+
+    /**
      * Return unique items from the collection.
      * 
-     * @param callable|string $key
+     * @param callable|string|null $key
      * @param bool $strict
      * @return static
      */
     public function unique(callable|string $key = null, bool $strict = false): static
     {
-        if ($key === null) {
-            return new static(Arr::unique($this->items, SORT_NUMERIC));
+        if ($key === null && $strict === false) {
+            return new static(Arr::unique($this->items, SORT_REGULAR));
         }
 
         $exists = [];
-        if (is_string($key)) {
-            $segments = $this->extractKey($key);
+        if ($key === null) {
+            $callback = function ($item) use (&$exists, $strict) {
+                if (in_array($item, $exists, $strict)) {
+                    return false;
+                }
+                $exists[] = $item;
+                return true;
+            };
+        } else if (is_string($key)) {
+            $segments = $this->explodeKey($key);
             $callback = function ($item) use (&$segments, &$exists, $strict) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 if (in_array($childItem, $exists, $strict)) {
                     return false;
                 }
@@ -528,7 +552,7 @@ class Collection implements Enumerable
     /**
      * Return unique items from the collection using strict comparison.
      * 
-     * @param callable|string $key
+     * @param callable|string|null $key
      * @return static
      */
     public function uniqueStrict(callable|string $key = null): static
@@ -549,29 +573,21 @@ class Collection implements Enumerable
     }
 
     /**
-     * Partition the collection into two arrays using the given callback or key.
+     * Get the values of a given key.
      * 
-     * @param callable $callback
+     * @param string|int $value
+     * @param string|int|null $key
      * @return static
      */
-    public function partition(callable $callback): static
+    public function pluck(string|int $value, string|int $key = null): static
     {
-        $passed = [];
-        $failed = [];
-        foreach ($this->items as $key => $value) {
-            if ($callback($value, $key)) {
-                $passed[] = $value;
-            } else {
-                $failed[] = $value;
-            }
-        }
-        return new static([new static($passed), new static($failed)]);
+        return new static(Arr::pluck($this->items, $value, $key));
     }
 
     /**
      * Get first value by callback in a collection.
      * 
-     * @param callable $callback
+     * @param callable|null $callback
      * @param mixed $default
      * @return mixed
      */
@@ -581,33 +597,9 @@ class Collection implements Enumerable
     }
 
     /**
-     * Get the first item by the given key value pair.
-     * 
-     * @param string|int $key
-     * @param mixed $value
-     * @param string $operator
-     * @return mixed
-     */
-    public function firstWhere(string|int $key, mixed $value, string $operator = '='): mixed
-    {
-        $this->checkValidOperator($operator);
-        $segments = $this->extractKey($key);
-        foreach ($this->items as $item) {
-            $childItem = $this->getItemRecursive($item, $segments);
-            if ($childItem === $item) {
-                continue;
-            }
-            if ($this->compare($childItem, $operator, $value)) {
-                return $item;
-            }
-        }
-        return null;
-    }
-
-    /**
      * Get first value by callback in a collection but throw an exception if no matching items exist.
      * 
-     * @param callable $callback
+     * @param callable|null $callback
      * @return mixed
      */
     public function firstOrFail(callable $callback = null): mixed
@@ -622,7 +614,7 @@ class Collection implements Enumerable
     /**
      * Get last value by callback in a collection.
      * 
-     * @param callable $callback
+     * @param callable|null $callback
      * @param mixed $default
      * @return mixed
      */
@@ -632,71 +624,13 @@ class Collection implements Enumerable
     }
 
     /**
-     * Execute a callback over each item.
-     * 
-     * @param callable $callback
-     * @return $this
+     * Get a lazy collection for the items in this collection.
+     *
+     * @return \Penguin\Component\Collection\LazyCollection
      */
-    public function each(callable $callback): static
+    public function lazy(): LazyCollection
     {
-        foreach ($this->items as $key => $value) {
-            if ($callback($value, $key) === false) {
-                break;
-            }
-        }
-        return $this;
-    }
-
-    /**
-     * Execute a callback over each nested chunk of items.
-     * 
-     * @param callable $callback
-     * @return $this
-     */
-    public function eachSpread(callable $callback): static
-    {
-        return $this->each(function ($chunk, $key) use ($callback) {
-            $chunk[] = $key;
-            return $callback(...$chunk);
-        });
-    }
-
-    /**
-     * Determine if all items pass the given truth test.
-     * 
-     * @param string|int|callable $key
-     * @param mixed $value
-     * @param string $operator
-     * @param bool
-     */
-    public function every(string|int|callable $key, mixed $value = null, string $operator = '='): bool
-    {
-        if (is_callable($key)) {
-            $callback = $key;
-            foreach ($this->items as $key => $item) {
-                if (!$callback($item, $key)) {
-                    return false;
-                }
-            }
-        } else {
-            $this->checkValidOperator($operator);
-            if (str_contains($key, '.')) {
-                $segments = $this->extractKey($key);
-                foreach ($this->items as $item) {
-                    $childItem = $this->getItemRecursive($item, $segments);
-                    if ($childItem !== $item && !$this->compare($childItem, $operator, $value)) {
-                        return false;
-                    }
-                }
-            } else {
-                foreach ($this->items as $item) {
-                    if (isset($item[$key]) && !$this->compare($item[$key], $operator, $value)) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
+        return new LazyCollection($this->items);
     }
 
     /**
@@ -737,20 +671,67 @@ class Collection implements Enumerable
         return new static(Arr::diff($this->items, ...$items));
     }
 
+    /**
+     * Get the items in the collection whose keys and values are not present in the given items.
+     * 
+     * @param iterable ...$items
+     * @return static
+     */
     public function diffAssoc(iterable ...$items): static
     {
         return new static(Arr::diffAssoc($this->items, ...$items));
     }
 
+    /**
+     * Get the items in the collection whose keys are not present in the given items.
+     * 
+     * @param iterable ...$items
+     * @return static
+     */
     public function diffKeys(iterable ...$items): static
     {
         return new static(Arr::diffKeys($this->items, ...$items));
     }
 
-    // public function duplicates(callable|string $key = null, bool $strict = false): static
-    // {
-        
-    // }
+    /**
+     * Retrieve duplicate items from the collection.
+     * 
+     * @param string|callable|null $callback
+     * @param bool $strict
+     * @return static
+     */
+    public function duplicates(string|callable $callback = null, bool $strict = false): static
+    {
+        if (is_string($callback)) {
+            $segments = $this->explodeKey($callback);
+            $callback = function ($item) use ($segments) {
+                return extract_item($item, $segments);
+            };
+        }
+        $items = $callback === null ? $this : $this->map($callback);
+        $uniqueItems = $items->unique(null, $strict);
+        $operator = $strict ? '===' : '==';
+        $results = [];
+        foreach ($items as $key => $item) {
+            if ($uniqueItems->isNotEmpty() && $this->compare($item, $operator, $uniqueItems->first())) {
+                $uniqueItems->shift();
+            } else {
+                $results[$key] = $item;
+            }
+        }
+        return new static($results);
+    }
+
+    /**
+     * Retrieve duplicate items from the collection using strict comparison.
+     * 
+     * @param string|callable|null $callback
+     * @return static
+     */
+    public function duplicatesStrict(string|callable $callback = null): static
+    {
+        return $this->duplicates($callback, true);
+    }
 
     /**
      * Search the collection for a given value and return the corresponding key if successful.
@@ -799,7 +780,7 @@ class Collection implements Enumerable
     /**
      * Shuffle the items in the collection.
      * 
-     * @param int $seed
+     * @param int|null $seed
      * @return static
      */
     public function shuffle(int $seed = null): static
@@ -808,10 +789,58 @@ class Collection implements Enumerable
     }
 
     /**
+     * Create chunks representing a "sliding window" view of the items in the collection.
+     *
+     * @param int $size
+     * @param int $step
+     * @return static
+     */
+    public function sliding(int $size = 2, int $step = 1): static
+    {
+        $chunks = floor(($this->count() - $size) / $step) + 1;
+        return static::times($chunks, fn ($number) => $this->slice(($number - 1) * $step, $size));
+    }
+
+    /**
+     * Get the first item in the collection, but only if exactly one item exists. Otherwise, throw an exception.
+     * 
+     * @param string|callable|null $key
+     * @param mixed $value
+     * @param string $operator
+     * @return mixed
+     */
+    public function sole(string|callable $key = null, mixed $value = null, string $operator = '=='): mixed
+    {
+        if ($key === null) {
+            return $this->first();
+        }
+
+        if (is_string($key)) {
+            $segments = $this->explodeKey($key);
+            $key = function ($item) use ($segments, $value, $operator) {
+                $childItem = extract_item($item, $segments);
+                return $childItem !== $item && $this->compare($childItem, $operator, $value);
+            };
+        }
+        $items = $this->filter($key);
+        $count = $items->count();
+
+        if ($count === 0) {
+            throw new ItemNotFoundException;
+        }
+        
+        if ($count > 1) {
+            throw new MultipleItemsFoundException($count);
+        }
+
+        return $items->first();
+    }
+
+    /**
      * Extract a slice of the collection.
      * 
      * @param int $start
-     * @param int $length
+     * @param int|null $length
      * @param bool $preserveKeys
      * @return static
      */
@@ -829,6 +858,52 @@ class Collection implements Enumerable
     public function skip(int $count): static
     {
         return $this->slice($count);
+    }
+
+    /**
+     * Split a collection into a certain number of groups.
+     * 
+     * @param int $numberOfGroups
+     * @return static
+     */
+    public function split(int $numberOfGroups): static
+    {
+        if ($this->isEmpty()) {
+            return new static;
+        }
+
+        $groups = new static;
+
+        $groupSize = floor($this->count() / $numberOfGroups);
+
+        $remain = $this->count() % $numberOfGroups;
+
+        $start = 0;
+
+        for ($i = 0; $i < $numberOfGroups; $i++) {
+            $size = $groupSize;
+
+            if ($i < $remain) {
+                $size++;
+            }
+
+            if ($size) {
+                $groups->push(new static(Arr::slice($this->items, $start, $size)));
+                $start += $size;
+            }
+        }
+        return $groups;
+    }
+
+    /**
+     * Split a collection into a certain number of groups, and fill the first groups completely.
+     *
+     * @param int $numberOfGroups
+     * @return static
+     */
+    public function splitIn(int $numberOfGroups): static
+    {
+        return $this->chunk(ceil($this->count() / $numberOfGroups));
     }
 
     /**
@@ -852,12 +927,56 @@ class Collection implements Enumerable
     }
 
     /**
+     * Concatenate values of a given key as a string.
+     * 
+     * @param string $glue
+     * @param string|callable|null $key
+     * @return string
+     */
+    public function implode(string $glue, string|callable $key = null): string
+    {
+        if ($key === null) {
+            return implode($glue, $this->items);
+        }
+
+        if (is_string($key)) {
+            $segments = $this->explodeKey($key);
+            $key = function ($item) use (&$segments) {
+                return extract_item($item, $segments);
+            };
+        }
+        return implode($glue, $this->map($key)->all());
+    }
+
+    /**
+     * Intersect the collection with the given items.
+     * 
+     * @param mixed $item
+     * @return static
+     */
+    public function intersect(mixed $item): static
+    {
+        return new static(array_intersect($this->items, $this->getArrayableItems($item)));
+    }
+
+    /**
+     * Intersect the collection with the given items by key.
+     * 
+     * @param mixed $item
+     * @return static
+     */
+    public function intersectByKeys(mixed $item): static
+    {
+        return new static(array_intersect_key($this->items, $this->getArrayableItems($item)));
+    }
+
+    /**
      * Get a flattened array of the items in the collection.
      *
      * @param int $depth
      * @return static
      */
-    public function flatten(int $depth = 1000): static
+    public function flatten(int $depth = PHP_INT_MAX): static
     {
         return new static(Arr::flatten($this->items, $depth));
     }
@@ -881,9 +1000,27 @@ class Collection implements Enumerable
         return new static($chunks);
     }
 
-    public function chunkWhile(callable $callback)
+    /**
+     * Chunk the collection into chunks with a callback.
+     * 
+     * @param callable $callback
+     * @return static
+     */
+    public function chunkWhile(callable $callback): static
     {
-
+        $chunks = [];
+        foreach ($this->items as $key => $item) {
+            if (empty($chunks)) {
+                $chunks[] = new static([$key => $item]);
+                continue;
+            }
+            if ($callback($item, $key, end($chunks))) {
+                end($chunks)->put($key, $item);
+            } else {
+                $chunks[] = new static([$key => $item]);
+            }
+        }
+        return new static($chunks);
     }
 
     /**
@@ -945,9 +1082,9 @@ class Collection implements Enumerable
             return in_array($key, $this->items, $strict);
         } else {
             $operator = $strict === true ? '===' : '==';
-            $segments = $this->extractKey($key);
+            $segments = $this->explodeKey($key);
             foreach ($this->items as $item) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 if ($childItem !== $item && $this->compare($childItem, $operator, $value)) {
                     return true;
                 }
@@ -1037,9 +1174,9 @@ class Collection implements Enumerable
     public function sortBy(string|callable $callback, bool $descending = false, int $options = SORT_REGULAR): static
     {
         if (is_string($callback)) {
-            $segments = $this->extractKey($callback);
+            $segments = $this->explodeKey($callback);
             $callback = function ($item) use ($segments) {
-                $childItem = $this->getItemRecursive($item, $segments);
+                $childItem = extract_item($item, $segments);
                 return $childItem === $item ? null : $childItem;
             };
         }
@@ -1073,6 +1210,84 @@ class Collection implements Enumerable
     }
 
     /**
+     * Sort the collection using the given callback but the priority is reduced.
+     * 
+     * @param string|callable $callback
+     * @param bool $descending
+     * @param int $options
+     * @return static
+     */
+    public function thenBy(string|callable $callback, bool $descending = false, int $options = SORT_REGULAR): static
+    {
+        if (empty($this->sorts)) {
+            throw new BadMethodCallException('Can\'t use thenBy method without using sortBy or sortByDesc');
+        }
+
+        $sorts = [];
+        $index = 0;
+        $keys = [];
+
+        if (is_string($callback)) {
+            $segments = $this->explodeKey($callback);
+            $callback = function ($item) use ($segments) {
+                $childItem = extract_item($item, $segments);
+                return $childItem === $item ? null : $childItem;
+            };
+        }
+
+        foreach ($this->items as $key => $item) {
+            if ($index === 0) {
+                $sorts[] = [$key => $callback($item, $key)];
+                $index++;
+            } else {
+                foreach ($this->sorts as $sort) {
+                    if (!in_array($sort($item, $key), $keys, true)) {
+                        $keys = [];
+                        $sorts[] = [$key => $callback($item, $key)];
+                        break;
+                    }
+                }
+            }
+
+            if (empty($keys)) {
+                foreach ($this->sorts as $sort) {
+                    $keys[] = $sort($item, $key);
+                }
+            } else {
+                $sorts[array_key_last($sorts)][$key] = $callback($item, $key);
+            }
+        }
+
+        $results = [];
+        foreach ($sorts as $key => $items) {
+            $descending ? arsort($items, $options) : asort($items, $options);
+            foreach (array_keys($items) as $key) {
+                $results[$key] = $this->items[$key];
+            }
+        }
+
+        $results = new static($results);
+        $this->setSort($results, $callback, true);
+        return $results;
+    }
+
+    /**
+     * Sort the collection in descending order using the given callback but the priority is reduced.
+     * 
+     * @param string|callable $callback
+     * @param bool $descending
+     * @param int $options
+     * @return static
+     */
+    public function thenByDesc(string|callable $key, int $options = SORT_REGULAR): static
+    {
+        if (empty($this->sorts)) {
+            throw new BadMethodCallException('Can\'t use thenByDesc method without using sortBy or sortByDesc');
+        }
+        return $this->thenBy($key, true, $options);
+    }
+
+    /**
      * Sort the collection keys.
      * 
      * @param int $options
@@ -1097,8 +1312,49 @@ class Collection implements Enumerable
         return $this->sortKeys($options, true);
     }
 
-    public function groupBy(string|callable ...$keys): static
+    /**
+     * Group an associative array by a field or using a callback.
+     * 
+     * @param string|callable|array $keys
+     * @param bool $preserveKeys
+     * @return static
+     */
+    public function groupBy(string|callable|array $keys, bool $preserveKeys = false): static
     {
+        $keys = Arr::wrap($keys);
+        $callback = array_shift($keys);
+        if (is_string($callback)) {
+            $segments = $this->explodeKey($callback);
+            $callback = function (array $item) use ($segments) {
+                return extract_item($item, $segments);
+            };
+        }
+
+        $results = [];
+        foreach ($this->items as $index => $item) {
+            $groupKeys = Arr::wrap($callback($item, $index));
+            foreach ($groupKeys as $groupKey) {
+                $groupKey = match (true) {
+                    is_bool($groupKey) => (int) $groupKey,
+                    is_object($groupKey) && method_exists($groupKey, '__toString') => (string) $groupKey,
+                    default => $groupKey
+                };
+
+                if (!isset($results[$groupKey])) {
+                    $results[$groupKey] = new static;
+                }
+
+                $results[$groupKey]->offsetSet($preserveKeys ? $index : null, $item);
+            }
+        }
+
+        $results = new static($results);
+        if (!empty($keys)) {
+            $results = $results->map(function (Collection $result) use ($keys, $preserveKeys) {
+                return $result->groupBy($keys, $preserveKeys);
+            });
+        }
+        return $results;
     }
 
     /**
@@ -1171,58 +1427,29 @@ class Collection implements Enumerable
     }
 
     /**
-     * Specify data which should be serialized to JSON.
+     * Join all items from the collection using a string. The final items can use a separate glue string.
      * 
-     * @return array
+     * @param string $glue
+     * @param string|null $finalGlue
+     * @return string
      */
-    public function jsonSerialize(): array
+    public function join(string $glue, string $finalGlue = null): string
     {
-        return $this->toArray();
-    }
-
-    /**
-     * Get recursive item in array.
-     * 
-     * @return array $array
-     * @return array $segments
-     * @return mixed
-     */
-    protected function getItemRecursive(array &$array, array $segments): mixed
-    {
-        $result = null;
-        $tmp = null;
-        foreach ($array as $key => $item) {
-            if ($key === $segments[0]) {
-                if (is_array($item) && count($segments) > 1) {
-                    $tmp = $this->getItemRecursive($item, array_slice($segments, 1));
-                    $result = $item === $tmp ? null : $tmp;
-                } else {
-                    $result = $item;
-                }
-                break;
-            }
-            $result = null;
+        if (empty($finalGlue)) {
+            return $this->implode($glue);
         }
-        return $result === null ? $array : $result;
-    }
 
-    /**
-     * Convert all items to array.
-     * 
-     * @param array $items
-     * @return array
-     */
-    protected function toArrayRecursive(array $items): array
-    {
-        $result = [];
-        foreach ($items as $key => $item) {
-            if (is_array($item)) {
-                $result[$key] = $this->toArrayRecursive($item);
-            } else {
-                $result[$key] = $item instanceof Collection ? $item->toArray() : $item;
-            }
+        if ($this->count() === 0) {
+            return '';
         }
-        return $result;
+
+        if ($this->count() === 1) {
+            return $this->first();
+        }
+
+        $collection = new static($this->items);
+        $collection->pop();
+        return $collection->implode($glue) . $finalGlue . $this->last();
     }
 
     /**

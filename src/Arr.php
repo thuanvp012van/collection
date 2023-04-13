@@ -31,7 +31,7 @@ class Arr
             return self::getValue($default);
         }
 
-        foreach (self::extractKey($key) as $segment) {
+        foreach (self::explodeKey($key) as $segment) {
             if (isset($array[$segment])) {
                 $array = $array[$segment];
             } else {
@@ -99,7 +99,7 @@ class Arr
 
             if (str_contains($key, '.')) {
                 $value = null;
-                $segments = self::extractKey($key);
+                $segments = self::explodeKey($key);
                 if (!isset($array[$segments[0]])) {
                     return;
                 }
@@ -150,34 +150,30 @@ class Arr
     /**
      * Return all the keys or a subset of the keys of an array.
      * 
-     * @param array $items
+     * @param array $array
      * @return array<int, string|int>
      */
-    public static function keys(iterable $items): array
+    public static function keys(iterable $array): array
     {
-        $items = self::getArrayableItems($items);
-        return array_keys($items);
+        $array = self::getArrayableItems($array);
+        return array_keys($array);
     }
 
     /**
      * Return all the values of an array.
      * 
-     * @param array $items
+     * @param array $array
      * @return array<int, mixed>
      */
-    public static function values(iterable $items): array
+    public static function values(iterable $array): array
     {
-        $items = self::getArrayableItems($items);
-        return array_values($items);
+        $array = self::getArrayableItems($array);
+        return array_values($array);
     }
 
     public static function exists(ArrayAccess|array $array, string|int $key): bool
     {
-    }
-
-    public static function remove(array &$array, string|int $key): void
-    {
-        unset($array[$key]);
+        return isset($array[$key]);
     }
 
     public static function count(Countable|iterable $items): int
@@ -188,14 +184,28 @@ class Arr
         return count($items);
     }
 
-    public static function countBy(callable $callback = null, array $array): array
+    /**
+     * Count the number of items in the collection by a field or using a callback.
+     * 
+     * @param callable $callback
+     * @param iterable $array
+     * @return static
+     */
+    public static function countBy(callable $callback = null, iterable $array): array
     {
+        $array = self::getArrayableItems($array);
         if ($callback !== null) {
             $array = Arr::map($callback, $array);
         }
         return array_count_values($array);
     }
 
+    /**
+     * Computes the difference of arrays.
+     * 
+     * @param iterable ...$arrays
+     * @return array
+     */
     public static function diff(iterable ...$arrays): array
     {
         foreach ($arrays as &$array) {
@@ -204,42 +214,81 @@ class Arr
         return array_diff(...$array);
     }
 
+    /**
+     * Computes the difference of arrays with additional index check.
+     * 
+     * @param iterable ...$arrays
+     * @return array
+     */
     public static function diffAssoc(iterable ...$arrays): array
     {
-        foreach ($arrays as &$array) {
-            $array = self::getArrayableItems($array);
-        }
-        return array_diff_assoc(...$array);
+        $arrays = Arr::map(fn (iterable $array) => self::getArrayableItems($array), $arrays);
+        return array_diff_assoc(...$arrays);
     }
 
+    /**
+     * Computes the difference of arrays using keys for comparison.
+     * 
+     * @param iterable ...$arrays
+     * @return array
+     */
     public static function diffKeys(iterable ...$arrays): array
     {
-        foreach ($arrays as &$array) {
-            $array = self::getArrayableItems($array);
-        }
-        return array_diff_key(...$array);
+        $arrays = Arr::map(fn (iterable $array) => self::getArrayableItems($array), $arrays);
+        return array_diff_key(...$arrays);
     }
 
-    public static function empty(array $array): bool
+    /**
+     * Check array is empty.
+     * 
+     * @param iterable $array
+     * @return bool
+     */
+    public static function empty(iterable $array): bool
     {
+        $array = self::getArrayableItems($array);
         return empty($array);
     }
 
-    public static function pad(array $array, int $size, mixed $value): array
+    /**
+     * Pad array to the specified length with a value.
+     * 
+     * @param iterable $array
+     * @param int $size
+     * @param mixed $value
+     * @return array
+     */
+    public static function pad(iterable $array, int $size, mixed $value): array
     {
-        return array_pad($array, $size, $value);
+        return array_pad(self::getArrayableItems($array), $size, $value);
     }
 
-    public static function randomKey(array $array, int $num = 1): array|string|int
+    /**
+     * Pick one or more random keys out of an array.
+     * 
+     * @param iterable $array
+     * @param int $num
+     * @return array|string|int
+     */
+    public static function randomKey(iterable $array, int $num = 1): array|string|int
     {
-        return array_rand($array, $num);
+        return array_rand(self::getArrayableItems($array), $num);
     }
 
-    public static function random(array $array, int $num = 1, bool $preserveKeys = false): mixed
+    /**
+     * Pick one or more random values out of an array.
+     * 
+     * @return iterable $array
+     * @return int $num
+     * @return bool $preserveKeys
+     * @return mixed
+     */
+    public static function random(iterable $array, int $num = 1, bool $preserveKeys = false): mixed
     {
+        $array = self::getArrayableItems($array);
         $rand = array_rand($array, $num);
         if (is_array($rand)) {
-            $array = array_filter($array, function ($_, $key) use ($rand) {
+            $array = array_filter($array, function ($value, $key) use ($rand) {
                 return in_array($key, $rand);
             }, ARRAY_FILTER_USE_BOTH);
             return $preserveKeys ? array_values($array) : $array;
@@ -247,27 +296,60 @@ class Arr
         return $array[$rand];
     }
 
-    public static function replace(array ...$arrays): array
+    /**
+     * Replace the array items with the given items.
+     * 
+     * @param iterable $arrays
+     * @return array
+     */
+    public static function replace(iterable ...$arrays): array
     {
+        $arrays = Arr::map(fn (iterable $array) => self::getArrayableItems($array), $arrays);
         return array_replace(...$arrays);
     }
 
-    public static function replaceRecursive(array ...$arrays): array
+    /**
+     * Recursively replace the array items with the given items.
+     * 
+     * @param iterable $arrays
+     * @param array
+     */
+    public static function replaceRecursive(iterable ...$arrays): array
     {
+        $arrays = Arr::map(fn (iterable $array) => self::getArrayableItems($array), $arrays);
         return array_replace_recursive(...$arrays);
     }
 
+    /**
+     * Get the items with the specified keys.
+     * 
+     * @param iterable $array
+     * @param string|int ...$keys
+     * @return static
+     */
     public static function only(iterable $array, string|int ...$keys): array
     {
         $array = self::getArrayableItems($array);
         return array_intersect_key($array, array_flip($keys));
     }
 
+    /**
+     * Find highest value.
+     * 
+     * @param mixed ...$items
+     * @return mixed
+     */
     public static function max(mixed ...$items): mixed
     {
         return max(...$items);
     }
 
+    /**
+     * Find lowest value.
+     * 
+     * @param mixed ...$items
+     * @return mixed
+     */
     public static function min(mixed ...$items): mixed
     {
         return min(...$items);
@@ -321,14 +403,61 @@ class Arr
         return (array) array_merge_recursive(...$items);
     }
 
-    public static function unique(iterable $items, int $flags = SORT_STRING): array
+    /**
+     * Pluck an array of values from an array.
+     * 
+     * @param iterable $array
+     * @param string|int $value
+     * @param string|int $key
+     * @return array
+     */
+    public static function pluck(iterable $array, string|int $value, string|int $key = null): array
     {
-        $items = self::getArrayableItems($items);
-        return array_unique($items, $flags);
+        list($value, $key) = self::explodeKeys($value, $key);
+        $results = [];
+        foreach ($array as $item) {
+            $itemValue = extract_item($item, $value);
+            if ($key === null) {
+                if ($itemValue !== $item) {
+                    $results[] = $itemValue;
+                }
+            } else {
+                $itemKey = extract_item($item, $key);
+                if ($itemValue !== $item && $itemKey !== $item) {
+                    if (is_object($itemKey) && method_exists($itemKey, '__toString')) {
+                        $itemKey = (string) $itemKey;
+                    }
+                    $results[$itemKey] = $itemValue;
+                }
+            }
+        }
+        return $results;
     }
 
+    /**
+     * Removes duplicate values from an array.
+     * 
+     * @param iterable $array
+     * @param int $flags
+     * @return array
+     */
+    public static function unique(iterable $array, int $flags = SORT_STRING): array
+    {
+        $array = self::getArrayableItems($array);
+        return array_unique($array, $flags);
+    }
+
+    /**
+     * Get first value by callback in an array.
+     * 
+     * @param iterable $array
+     * @param callable $callback
+     * @param mixed $default
+     * @return mixed
+     */
     public static function first(iterable $array, callable $callback = null, mixed $default = null): mixed
     {
+        $array = self::getArrayableItems($array);
         if ($callback === null) {
             if (empty($array)) {
                 return $default;
@@ -348,8 +477,17 @@ class Arr
         return self::getValue($default);
     }
 
-    public static function last(array $array, callable $callback = null, mixed $default = null): mixed
+    /**
+     * Get last value by callback in an array.
+     * 
+     * @param iterable $array
+     * @param callable $callback
+     * @param mixed $default
+     * @return mixed
+     */
+    public static function last(iterable $array, callable $callback = null, mixed $default = null): mixed
     {
+        $array = self::getArrayableItems($array);
         if ($callback === null) {
             return empty($array) ? $default : end($array);
         }
@@ -366,12 +504,14 @@ class Arr
     /**
      * Sort the array.
      * 
-     * @param int $options
+     * @param iterable $array
      * @param bool $descending
+     * @param int $options
      * @return static
      */
-    public static function sort(array &$array, bool $descending = false, int $options = SORT_REGULAR): bool
+    public static function sort(iterable &$array, bool $descending = false, int $options = SORT_REGULAR): bool
     {
+        $array = self::getArrayableItems($array);
         return $descending ? rsort($array, $options) : sort($array, $options);
     }
 
@@ -422,6 +562,31 @@ class Arr
         return http_build_query(self::getArrayableItems($item), '', '&', PHP_QUERY_RFC3986);
     }
 
+    /**
+     * Concatenate values of a given key as a string.
+     * 
+     * @param string $glue
+     * @param iterable $item
+     * @return string
+     */
+    public static function implode(string $glue, iterable $item): string
+    {
+        $item = self::getArrayableItems($item);
+        return implode($glue, $item);
+    }
+
+    /**
+     * Computes the intersection of arrays.
+     * 
+     * @param iterable ...$arrays
+     * @return array
+     */
+    public static function intersect(iterable ...$arrays): array
+    {
+        $arrays = Arr::map(fn (iterable $array) => self::getArrayableItems($array), $arrays);
+        return array_intersect(...$arrays);
+    }
+
     public static function where(array $array, callable $callback): array
     {
         return array_filter($array, $callback, ARRAY_FILTER_USE_BOTH);
@@ -448,7 +613,14 @@ class Arr
         });
     }
 
-    public static function flatten(iterable $array, int $depth = 1000): array
+    /**
+     * Flatten a multi-dimensional array into a single level.
+     *
+     * @param iterable $array
+     * @param int $depth
+     * @return array
+     */
+    public static function flatten(iterable $array, int $depth = PHP_INT_MAX): array
     {
         if ($depth === 0) {
             return array_values((array)$array);
@@ -536,6 +708,12 @@ class Arr
         return array_slice($array, $start, $length, $preserveKeys);
     }
 
+    /**
+     * If the given value is not an array and not null, wrap it in one.
+     * 
+     * @param mixed $value
+     * @return array
+     */
     public static function wrap(mixed $value): array
     {
         if (is_null($value)) {
@@ -551,9 +729,7 @@ class Arr
 
     protected static function getArrayableItems(Collection|iterable $items): array
     {
-        if (is_array($items)) {
-            return $items;
-        } elseif ($items instanceof Collection) {
+        if ($items instanceof Collection) {
             return $items->all();
         } elseif ($items instanceof Traversable) {
             return iterator_to_array($items);
@@ -561,7 +737,17 @@ class Arr
         return (array) $items;
     }
 
-    private static function extractKey(string|int $key): array
+    protected static function explodeKeys(string|int|null ...$keys): array
+    {
+        return Arr::map(function ($key) {
+            if ($key !== null) {
+                $key = self::explodeKey($key);
+            }
+            return $key;
+        }, $keys);
+    }
+
+    private static function explodeKey(string|int $key): array
     {
         return explode('.', $key);
     }

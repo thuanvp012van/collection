@@ -2,16 +2,82 @@
 
 namespace Penguin\Component\Collection\Traits;
 
-use Closure;
+use Penguin\Component\Collection\Collection;
+use Penguin\Component\Collection\Enumerable;
+use Penguin\Component\Collection\Arr;
 use JsonSerializable;
 use LogicException;
-use Penguin\Component\Collection\Arr;
-use Penguin\Component\Collection\Collection;
 use Traversable;
 use UnitEnum;
+use Closure;
+use Penguin\Component\Collection\LazyCollection;
 
 trait EnumeratesValues
 {
+    /**
+     * Counts all elements in a collection.
+     * 
+     * @param string|int|callable $key
+     * @return int
+     */
+    public function count(string|int|callable $key = null): int
+    {
+        if ($key === null) {
+            return $this instanceof LazyCollection ? iterator_count($this->getIterator()) : count($this->items);
+        }
+
+        $count = 0;
+        if (is_callable($key)) {
+            foreach ($this as $item) {
+                if ($key($item)) {
+                    $count++;
+                }
+            }
+            return $count;
+        }
+
+        $segments = $this->explodeKey($key);
+        foreach ($this as $item) {
+            if ($item !== extract_item($item, $segments)) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Calculate the sum of values in a collection.
+     * 
+     * @param string|int|callable $key
+     * @return int|float
+     */
+    public function sum(string|int|callable $key = null): int|float
+    {
+        if ($key === null) {
+            return array_sum($this->all());
+        }
+
+        $sum = 0;
+        $term = 0;
+        if (is_callable($key)) {
+            foreach ($this as $item) {
+                if (is_numeric($term = $key($item))) {
+                    $sum += $term;
+                }
+            }
+            return $sum;
+        }
+
+        $segments = $this->explodeKey($key);
+        foreach ($this as $item) {
+            if (is_array($item) && is_numeric($term = extract_item($item, $segments))) {
+                $sum += $term;
+            }
+        }
+
+        return $sum;
+    }
+
     /**
      * Reduce the collection to a single value.
      * 
@@ -23,7 +89,7 @@ trait EnumeratesValues
     {
         $result = $initial;
 
-        foreach ($this->all() as $key => $value) {
+        foreach ($this as $key => $value) {
             $result = $callback($result, $value, $key);
         }
 
@@ -59,6 +125,54 @@ trait EnumeratesValues
     }
 
     /**
+     * Map a collection and flatten the result by a single level.
+     *
+     * @param callable $callback
+     * @return static
+     */
+    public function flatMap(callable $callback)
+    {
+        return $this->map($callback)->collapse();
+    }
+
+    /**
+     * Get the first item by the given key value pair.
+     * 
+     * @param string|int $key
+     * @param mixed $value
+     * @param string $operator
+     * @return mixed
+     */
+    public function firstWhere(string|int $key, mixed $value, string $operator = '='): mixed
+    {
+        $this->checkValidOperator($operator);
+        $segments = $this->explodeKey($key);
+        foreach ($this as $item) {
+            $childItem = extract_item($item, $segments);
+            if ($childItem === $item) {
+                continue;
+            }
+            if ($this->compare($childItem, $operator, $value)) {
+                return $item;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * "Paginate" the collection by slicing it into a smaller collection.
+     *
+     * @param int $page
+     * @param int $perPage
+     * @return static
+     */
+    public function forPage(int $page, int $perPage): static
+    {
+        $offset = max(0, ($page - 1) * $perPage);
+        return $this->slice($offset, $perPage);
+    }
+
+    /**
      * Create a new collection consisting of every n-th element.
      * 
      * @param int $step
@@ -90,6 +204,26 @@ trait EnumeratesValues
     }
 
     /**
+     * Partition the collection into two arrays using the given callback or key.
+     * 
+     * @param callable $callback
+     * @return static
+     */
+    public function partition(callable $callback): static
+    {
+        $passed = [];
+        $failed = [];
+        foreach ($this as $key => $value) {
+            if ($callback($value, $key)) {
+                $passed[] = $value;
+            } else {
+                $failed[] = $value;
+            }
+        }
+        return new static([new static($passed), new static($failed)]);
+    }
+
+    /**
      * Filter items by the given key value pair.
      *
      * @param string|int $key
@@ -100,9 +234,9 @@ trait EnumeratesValues
     public function where(string|int $key, mixed $value, string $operator = '='): static
     {
         $this->checkValidOperator($operator);
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $operator, $value) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $this->compare($childItem, $operator, $value);
         });
     }
@@ -129,9 +263,9 @@ trait EnumeratesValues
      */
     public function whereBetween(string|int $key, string|int $min, string|int $max): static
     {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $min, $max) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $item !== $childItem && $childItem >= $min && $childItem <= $max;
         });
     }
@@ -146,9 +280,9 @@ trait EnumeratesValues
      */
     public function whereNotBetween(string|int $key, string|int $min, string|int $max): static
     {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $min, $max) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $item !== $childItem && $childItem < $min || $childItem > $max;
         });
     }
@@ -163,9 +297,9 @@ trait EnumeratesValues
      */
     public function whereIn(string|int $key, array $values, bool $strict = false): static
     {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $values, $strict) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $item !== $childItem && in_array($childItem, $values, $strict);
         });
     }
@@ -192,10 +326,10 @@ trait EnumeratesValues
      */
     public function whereNotIn(string|int $key, mixed $values, bool $strict = false): static
     {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         $values = $this->getArrayableItems($values);
         return $this->filter(function ($item) use ($segments, $values, $strict) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $item !== $childItem && !in_array($childItem, $values, $strict);
         });
     }
@@ -277,9 +411,9 @@ trait EnumeratesValues
             );
         }
 
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $value, $strict, $encoding) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
 
             $type = gettype($childItem);
             if ($type !== 'integer' && $type !== 'double' && $type !== 'string') return false;
@@ -320,9 +454,9 @@ trait EnumeratesValues
      */
     public function whereNotEmpty(string|int $key): static
     {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             return $item !== $childItem && !empty($childItem);
         });
     }
@@ -340,7 +474,7 @@ trait EnumeratesValues
     }
 
     /**
-     * Apply the callback if the given "value" is (or resolves to) truthy.
+     * Apply the callback if the given "value" is true.
      * 
      * @param bool $value
      * @param callable $callback
@@ -378,11 +512,186 @@ trait EnumeratesValues
     }
 
     /**
-     * Dump the collection and end the script.
+     * Wrap the given value in a collection if applicable.
+     * 
+     * @param mixed $value
+     * @return array
      */
-    public function dd(): void
+    public static function wrap(mixed $value): static
     {
-        dd($this);
+        return $value instanceof Enumerable
+            ? new static($value)
+            : new static(Arr::wrap($value));
+    }
+
+    /**
+     * Get the underlying items from the given collection if applicable.
+     * 
+     * @param mixed $value
+     * @return mixed
+     */
+    public static function unwrap(mixed $value): mixed
+    {
+        return $value instanceof Enumerable ? $value->all() : $value;
+    }
+
+    /**
+     * Apply the callback if the given "value" is false.
+     * 
+     * @param bool $value
+     * @param callable $callback
+     * @param callable $default
+     * @param $this
+     */
+    public function unless(bool $value, callable $callback, callable $default = null): static
+    {
+        return $this->when(!$value, $callback, $default);
+    }
+
+    /**
+     * Apply the callback if the collection is not empty.
+     * 
+     * @param callable $callback
+     * @param callable $default
+     * @return $this
+     */
+    public function unlessEmpty(callable $callback, callable $default = null): static
+    {
+        return $this->whenNotEmpty($callback, $default);
+    }
+
+    /**
+     * Apply the callback if the collection is empty.
+     * 
+     * @param callable $callback
+     * @param callable $default
+     * @return $this
+     */
+    public function unlessNotEmpty(callable $callback, callable $default = null): static
+    {
+        return $this->whenEmpty($callback, $default);
+    }
+
+    /**
+     * Create a new collection by invoking the callback a given amount of times.
+     *
+     * @param int $number
+     * @param callable $callback
+     * @return static
+     */
+    public static function times($number, callable $callback = null): static
+    {
+        if ($number < 1) {
+            return new static;
+        }
+        return static::range(1, $number)->map($callback);
+    }
+
+    /**
+     * Convert all items to array.
+     * 
+     * @return array
+     */
+    public function toArray(): array
+    {
+        return $this->map(fn ($value) => $value instanceof Enumerable ? $value->toArray() : $value)->all();
+    }
+
+    /**
+     * Dump the collection and end the script.
+     * 
+     * @param mixed ...$args
+     * @return void
+     */
+    public function dd(mixed ...$args): void
+    {
+        dd($args + $this->all());
+    }
+
+    /**
+     * Execute a callback over each item.
+     * 
+     * @param callable $callback
+     * @return $this
+     */
+    public function each(callable $callback): static
+    {
+        foreach ($this as $key => $value) {
+            if ($callback($value, $key) === false) {
+                break;
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * Execute a callback over each nested chunk of items.
+     * 
+     * @param callable $callback
+     * @return $this
+     */
+    public function eachSpread(callable $callback): static
+    {
+        return $this->each(function ($chunk, $key) use ($callback) {
+            $chunk[] = $key;
+            return $callback(...$chunk);
+        });
+    }
+
+    /**
+     * Determine if all items pass the given truth test.
+     * 
+     * @param string|int|callable $key
+     * @param mixed $value
+     * @param string $operator
+     * @param bool
+     */
+    public function every(string|int|callable $key, mixed $value = null, string $operator = '='): bool
+    {
+        if (is_callable($key)) {
+            $callback = $key;
+            foreach ($this as $key => $item) {
+                if (!$callback($item, $key)) {
+                    return false;
+                }
+            }
+        } else {
+            $this->checkValidOperator($operator);
+            if (str_contains($key, '.')) {
+                $segments = $this->explodeKey($key);
+                foreach ($this as $item) {
+                    $childItem = extract_item($item, $segments);
+                    if ($childItem !== $item && !$this->compare($childItem, $operator, $value)) {
+                        return false;
+                    }
+                }
+            } else {
+                foreach ($this as $item) {
+                    if (isset($item[$key]) && !$this->compare($item[$key], $operator, $value)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Convert the object into something JSON serializable.
+     *
+     * @return array
+     */
+    public function jsonSerialize(): array
+    {
+        return array_map(function ($value) {
+            if ($value instanceof JsonSerializable) {
+                return $value->jsonSerialize();
+            } elseif ($value instanceof Enumerable) {
+                return $value->toArray();
+            }
+
+            return $value;
+        }, $this->all());
     }
 
     protected function handleWhereLike(
@@ -394,9 +703,9 @@ trait EnumeratesValues
         string $encoding = 'UTF-8',
         bool $strict = false
     ): static {
-        $segments = $this->extractKey($key);
+        $segments = $this->explodeKey($key);
         return $this->filter(function ($item) use ($segments, $value, $operator, $desiredPosition, $offset, $encoding, $strict) {
-            $childItem = $this->getItemRecursive($item, $segments);
+            $childItem = extract_item($item, $segments);
             $type = gettype($childItem);
             if ($type !== 'integer' && $type !== 'double' && $type !== 'string') return false;
 
@@ -466,7 +775,7 @@ trait EnumeratesValues
      * @param string|int $key
      * @return array
      */
-    protected function extractKey(string|int $key): array
+    protected function explodeKey(string|int $key): array
     {
         return explode('.', $key);
     }

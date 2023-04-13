@@ -2,13 +2,20 @@
 
 namespace Penguin\Component\Collection;
 
-use ArrayAccess;
 use Countable;
 use IteratorAggregate;
 use JsonSerializable;
 
-interface Enumerable extends ArrayAccess, IteratorAggregate, JsonSerializable, Countable
+interface Enumerable extends IteratorAggregate, JsonSerializable, Countable
 {
+    /**
+     * Create a new collection instance.
+     * 
+     * @param mixed $items
+     * @return static
+     */
+    public static function make(mixed $items = []): static;
+
     /**
      * Get all of the items in the collection.
      * 
@@ -41,10 +48,9 @@ interface Enumerable extends ArrayAccess, IteratorAggregate, JsonSerializable, C
     public static function range(string|int $start, string|int $end, string|int $step = 1): static;
 
     /**
-     * Push one or more items onto the end of the collection.
-     *
-     * @param mixed ...$values
-     * @return $this
+     * Convert all items to array.
+     * 
+     * @return array
      */
-    public function push(mixed ...$values): static;
+    public function toArray(): array;
 }
