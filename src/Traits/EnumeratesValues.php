@@ -2,6 +2,7 @@
 
 namespace Penguin\Component\Collection\Traits;
 
+use Penguin\Component\Collection\LazyCollection;
 use Penguin\Component\Collection\Collection;
 use Penguin\Component\Collection\Enumerable;
 use Penguin\Component\Collection\Arr;
@@ -10,10 +11,33 @@ use LogicException;
 use Traversable;
 use UnitEnum;
 use Closure;
-use Penguin\Component\Collection\LazyCollection;
+use Penguin\Component\Collection\ItemNotFoundException;
+use Penguin\Component\Collection\MultipleItemsFoundException;
 
 trait EnumeratesValues
 {
+    protected array $sorts = [];
+
+    /**
+     * Collect the values into a collection.
+     * 
+     * @return \Penguin\Component\Collection\Collection
+     */
+    public function collect(): Collection
+    {
+        return new Collection($this->all());
+    }
+
+    /**
+     * Check collection is not empty.
+     * 
+     * @return bool
+     */
+    public function isNotEmpty(): bool
+    {
+        return !$this->isEmpty();
+    }
+
     /**
      * Counts all elements in a collection.
      * 
@@ -76,6 +100,52 @@ trait EnumeratesValues
         }
 
         return $sum;
+    }
+
+    /**
+     * Get the first item in the collection, but only if exactly one item exists. Otherwise, throw an exception.
+     * 
+     * @param string|callable|null $key
+     * @param mixed $value
+     * @param string $operator
+     * @return mixed
+     */
+    public function sole(string|callable $key = null, mixed $value = null, string $operator = '=='): mixed
+    {
+        if ($key === null) {
+            return $this->first();
+        }
+
+        if (is_string($key)) {
+            $segments = $this->explodeKey($key);
+            $key = function ($item) use ($segments, $value, $operator) {
+                $childItem = extract_item($item, $segments);
+                return $childItem !== $item && $this->compare($childItem, $operator, $value);
+            };
+        }
+        $items = $this->filter($key);
+        $count = $items->count();
+
+        if ($count === 0) {
+            throw new ItemNotFoundException;
+        }
+        
+        if ($count > 1) {
+            throw new MultipleItemsFoundException($count);
+        }
+
+        return $items->first();
+    }
+
+    /**
+     * Split a collection into a certain number of groups, and fill the first groups completely.
+     *
+     * @param int $numberOfGroups
+     * @return static
+     */
+    public function splitIn(int $numberOfGroups): static
+    {
+        return $this->chunk(ceil($this->count() / $numberOfGroups));
     }
 
     /**
@@ -190,6 +260,54 @@ trait EnumeratesValues
             $position++;
         }
         return new static($new);
+    }
+
+    /**
+     * Take items in the collection until the given callback return false.
+     * 
+     * @param int|callable $callback
+     * @return static
+     */
+    public function takeUntil(int|callable $callback): static
+    {
+        if (is_int($callback)) {
+            $callback = function ($item) use ($callback) {
+                return $callback <= $item;
+            };
+        }
+        return $this->filter(function ($item, $key) use ($callback) {
+            return !$callback($item, $key);
+        });
+    }
+
+    /**
+     * Take items in the collection until the given callback return true.
+     * 
+     * @param int|callable $callback
+     * @return static
+     */
+    public function takeWhile(int|callable $callback): static
+    {
+        if (is_int($callback)) {
+            $callback = function ($item) use ($callback) {
+                return $callback <= $item;
+            };
+        }
+        return $this->filter(function ($item, $key) use ($callback) {
+            return $callback($item, $key);
+        });
+    }
+
+    /**
+     * Pass the collection to the given callback and then return it.
+     *
+     * @param callable $callback
+     * @return $this
+     */
+    public function tap(callable $callback): static
+    {
+        $callback($this);
+        return $this;
     }
 
     /**
@@ -525,6 +643,53 @@ trait EnumeratesValues
     }
 
     /**
+     * Return unique items from the collection.
+     * 
+     * @param callable|string|null $key
+     * @param bool $strict
+     * @return static
+     */
+    public function unique(callable|string $key = null, bool $strict = false): static
+    {
+        if ($this instanceof Collection && $key === null && $strict === false) {
+            return new static(Arr::unique($this->items, SORT_REGULAR));
+        }
+
+        $exists = [];
+        if ($key === null) {
+            $callback = function ($item) use (&$exists, $strict) {
+                if (in_array($item, $exists, $strict)) {
+                    return false;
+                }
+                $exists[] = $item;
+                return true;
+            };
+        } else if (is_string($key)) {
+            $segments = $this->explodeKey($key);
+            $callback = function ($item) use (&$segments, &$exists, $strict) {
+                $childItem = extract_item($item, $segments);
+                if (in_array($childItem, $exists, $strict)) {
+                    return false;
+                }
+                $exists[] = $childItem;
+                return true;
+            };
+        } else {
+            $callback = function ($item, $index) use ($key, &$exists, $strict) {
+                $value = $key($item, $index);
+                if (in_array($value, $exists, $strict)) {
+                    return false;
+                }
+                $exists[] = $value;
+                return true;
+            };
+        }
+        return $this->filter(function ($item, $index) use ($callback) {
+            return $callback($item, $index);
+        });
+    }
+
+    /**
      * Get the underlying items from the given collection if applicable.
      * 
      * @param mixed $value
@@ -588,6 +753,17 @@ trait EnumeratesValues
     }
 
     /**
+     * Return the JSON representation of a collection.
+     * 
+     * @return int $options
+     * @return string
+     */
+    public function toJson(int $options = 0): string
+    {
+        return json_encode($this->toArray(), $options);
+    }
+
+    /**
      * Convert all items to array.
      * 
      * @return array
@@ -595,6 +771,17 @@ trait EnumeratesValues
     public function toArray(): array
     {
         return $this->map(fn ($value) => $value instanceof Enumerable ? $value->toArray() : $value)->all();
+    }
+
+    /**
+     * Retrieve duplicate items from the collection using strict comparison.
+     * 
+     * @param string|callable|null $callback
+     * @return static
+     */
+    public function duplicatesStrict(string|callable $callback = null): static
+    {
+        return $this->duplicates($callback, true);
     }
 
     /**
@@ -790,7 +977,7 @@ trait EnumeratesValues
     {
         if (is_array($items)) {
             return $items;
-        } elseif ($items instanceof Collection) {
+        } elseif ($items instanceof Enumerable) {
             return $items->all();
         } elseif ($items instanceof Traversable) {
             return iterator_to_array($items);

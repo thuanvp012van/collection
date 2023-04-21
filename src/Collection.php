@@ -17,8 +17,6 @@ class Collection implements ArrayAccess, Enumerable
 
     protected array $items;
 
-    protected array $sorts = [];
-
     public function __construct(mixed $items = [])
     {
         $this->items = $this->getArrayableItems($items);
@@ -286,16 +284,10 @@ class Collection implements ArrayAccess, Enumerable
             };
         }
 
-        $max = null;
-        $this->each(function ($item, $key) use (&$max, &$callback) {
-            if ($max === null) {
-                $max = $callback($item, $key);
-            } else {
-                $item = $callback($item, $key);
-                $max = $item > $max ? $item : $max;
-            }
+        return $this->reduce(function ($max, $value, $key) use ($callback) {
+            $value = $callback($value, $key);
+            return $max === null || $value > $max ? $value : $max;
         });
-        return $max;
     }
 
     /**
@@ -422,17 +414,6 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Return the JSON representation of a collection.
-     * 
-     * @return int $options
-     * @return string
-     */
-    public function toJson(int $options = 0): string
-    {
-        return json_encode($this->toArray(), $options);
-    }
-
-    /**
      * Transform each item in the collection using a callback.
      * 
      * @param callable $callback
@@ -456,42 +437,6 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Take items in the collection until the given callback return false.
-     * 
-     * @param int|callable $callback
-     * @return static
-     */
-    public function takeUntil(int|callable $callback): static
-    {
-        if (is_int($callback)) {
-            $callback = function ($item) use ($callback) {
-                return $callback <= $item;
-            };
-        }
-        return $this->filter(function ($item, $key) use ($callback) {
-            return !$callback($item, $key);
-        });
-    }
-
-    /**
-     * Take items in the collection until the given callback return true.
-     * 
-     * @param int|callable $callback
-     * @return static
-     */
-    public function takeWhile(int|callable $callback): static
-    {
-        if (is_int($callback)) {
-            $callback = function ($item) use ($callback) {
-                return $callback <= $item;
-            };
-        }
-        return $this->filter(function ($item, $key) use ($callback) {
-            return $callback($item, $key);
-        });
-    }
-
-    /**
      * Union the collection with the given items.
      * 
      * @param mixed $item
@@ -500,53 +445,6 @@ class Collection implements ArrayAccess, Enumerable
     public function union(mixed $item): static
     {
         return new static($this->items + $this->getArrayableItems($item));
-    }
-
-    /**
-     * Return unique items from the collection.
-     * 
-     * @param callable|string|null $key
-     * @param bool $strict
-     * @return static
-     */
-    public function unique(callable|string $key = null, bool $strict = false): static
-    {
-        if ($key === null && $strict === false) {
-            return new static(Arr::unique($this->items, SORT_REGULAR));
-        }
-
-        $exists = [];
-        if ($key === null) {
-            $callback = function ($item) use (&$exists, $strict) {
-                if (in_array($item, $exists, $strict)) {
-                    return false;
-                }
-                $exists[] = $item;
-                return true;
-            };
-        } else if (is_string($key)) {
-            $segments = $this->explodeKey($key);
-            $callback = function ($item) use (&$segments, &$exists, $strict) {
-                $childItem = extract_item($item, $segments);
-                if (in_array($childItem, $exists, $strict)) {
-                    return false;
-                }
-                $exists[] = $childItem;
-                return true;
-            };
-        } else {
-            $callback = function ($item, $index) use ($key, &$exists, $strict) {
-                $value = $key($item, $index);
-                if (in_array($value, $exists, $strict)) {
-                    return false;
-                }
-                $exists[] = $value;
-                return true;
-            };
-        }
-        return $this->filter(function ($item, $index) use ($callback) {
-            return $callback($item, $index);
-        });
     }
 
     /**
@@ -723,24 +621,13 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Retrieve duplicate items from the collection using strict comparison.
-     * 
-     * @param string|callable|null $callback
-     * @return static
-     */
-    public function duplicatesStrict(string|callable $callback = null): static
-    {
-        return $this->duplicates($callback, true);
-    }
-
-    /**
      * Search the collection for a given value and return the corresponding key if successful.
      * 
      * @param int|string|callable $callback
      * @param bool $strict
      * @return int|string|false
      */
-    public function search(int|string|callable $callback, bool $strict = false): int|string|false
+    public function search(mixed $callback, bool $strict = false): int|string|false
     {
         if (is_callable($callback)) {
             foreach ($this->items as $key => $item) {
@@ -802,38 +689,14 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Get the first item in the collection, but only if exactly one item exists. Otherwise, throw an exception.
+     * Skip the first items by count.
      * 
-     * @param string|callable|null $key
-     * @param mixed $value
-     * @param string $operator
-     * @return mixed
+     * @param int $count
+     * @return static
      */
-    public function sole(string|callable $key = null, mixed $value = null, string $operator = '=='): mixed
+    public function skip(int $count): static
     {
-        if ($key === null) {
-            return $this->first();
-        }
-
-        if (is_string($key)) {
-            $segments = $this->explodeKey($key);
-            $key = function ($item) use ($segments, $value, $operator) {
-                $childItem = extract_item($item, $segments);
-                return $childItem !== $item && $this->compare($childItem, $operator, $value);
-            };
-        }
-        $items = $this->filter($key);
-        $count = $items->count();
-
-        if ($count === 0) {
-            throw new ItemNotFoundException;
-        }
-        
-        if ($count > 1) {
-            throw new MultipleItemsFoundException($count);
-        }
-
-        return $items->first();
+        return $this->slice($count);
     }
 
     /**
@@ -847,17 +710,6 @@ class Collection implements ArrayAccess, Enumerable
     public function slice(int $start, int $length = null, bool $preserveKeys = false): static
     {
         return new static(Arr::slice($this->items, $start, $length, $preserveKeys));
-    }
-
-    /**
-     * Skip the first items by count.
-     * 
-     * @param int $count
-     * @return static
-     */
-    public function skip(int $count): static
-    {
-        return $this->slice($count);
     }
 
     /**
@@ -896,17 +748,6 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Split a collection into a certain number of groups, and fill the first groups completely.
-     *
-     * @param int $numberOfGroups
-     * @return static
-     */
-    public function splitIn(int $numberOfGroups): static
-    {
-        return $this->chunk(ceil($this->count() / $numberOfGroups));
-    }
-
-    /**
      * Check collection is empty.
      * 
      * @return bool
@@ -914,16 +755,6 @@ class Collection implements ArrayAccess, Enumerable
     public function isEmpty(): bool
     {
         return empty($this->items);
-    }
-
-    /**
-     * Check collection is not empty.
-     * 
-     * @return bool
-     */
-    public function isNotEmpty(): bool
-    {
-        return !$this->isEmpty();
     }
 
     /**
@@ -993,11 +824,10 @@ class Collection implements ArrayAccess, Enumerable
             return new static;
         }
 
-        $chunks = [];
-        foreach (array_chunk($this->items, $size, true) as &$chunk) {
-            $chunks[] = new static($chunk);
-        }
-        return new static($chunks);
+        $chunks = array_chunk($this->items, $size, true);
+        return new static(array_map(function ($chunk) {
+            return new static ($chunk);
+        }, $chunks));
     }
 
     /**
@@ -1141,11 +971,11 @@ class Collection implements ArrayAccess, Enumerable
     /**
      * Sort the collection.
      * 
-     * @param int $options
      * @param bool $descending
+     * @param int $options
      * @return static
      */
-    public function sort(int $options = SORT_REGULAR, bool $descending = false): static
+    public function sort(bool $descending = false, int $options = SORT_REGULAR): static
     {
         $sorted = $this->items;
         Arr::sort($sorted, $descending, $options);

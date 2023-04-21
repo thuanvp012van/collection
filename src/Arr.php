@@ -530,14 +530,15 @@ class Arr
     /**
      * Searches the array for a given value and returns the first corresponding key if successful.
      * 
-     * @param int|string|callable $callback
+     * @param mixed $value
+     * @param iterable $item
      * @param bool $strict
-     * @return int|string|false
+     * @return string|int|false
      */
-    public static function search(callable $callback, iterable $item, bool $strict = false): int|string|false
+    public static function search(mixed $value, iterable $item, bool $strict = false): string|int|false
     {
         $item = self::getArrayableItems($item);
-        return array_search($callback, $item, $strict);
+        return array_search($value, $item, $strict);
     }
 
     /**
@@ -622,15 +623,14 @@ class Arr
      */
     public static function flatten(iterable $array, int $depth = PHP_INT_MAX): array
     {
-        if ($depth === 0) {
-            return array_values((array)$array);
-        }
         $result = [];
-        foreach ($array as $value) {
-            if (!is_array($value)) {
-                $result[] = $value;
+        foreach ($array as $item) {
+            $item = $item instanceof Collection ? $item->all() : $item;
+            if (!is_array($item)) {
+                $result[] = $item;
             } else {
-                $result = array_merge($result, self::flatten($value, $depth - 1));
+                $item = $depth === 1 ? array_values($item) : self::flatten($item, $depth - 1);
+                $result = array_merge($result, $item);
             }
         }
         return $result;
