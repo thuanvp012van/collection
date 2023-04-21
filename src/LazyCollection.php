@@ -102,7 +102,7 @@ class LazyCollection implements Enumerable
         $keys = Arr::flip($keys);
         $count = count($keys);
         foreach ($this as $key => $value) {
-            if (isset($keys[$key]) && --$count === 0) {
+            if (array_key_exists($key, $keys) && --$count === 0) {
                 return true;
             }
         }
@@ -119,7 +119,7 @@ class LazyCollection implements Enumerable
     {
         $keys = Arr::flip($keys);
         foreach ($this as $key => $value) {
-            if (isset($keys[$key])) {
+            if (array_key_exists($key, $keys)) {
                 return true;
             }
         }
@@ -137,7 +137,7 @@ class LazyCollection implements Enumerable
         $keys = Arr::flip($keys);
         return new static(function () use (&$keys) {
             foreach ($this as $key => $value) {
-                if (!isset($keys[$key])) {
+                if (!array_key_exists($key, $keys)) {
                     yield $key => $value;
                 }
             }
@@ -549,11 +549,7 @@ class LazyCollection implements Enumerable
      */
     public function random(int $num = 1, bool $preserveKeys = false): mixed
     {
-        $result = Arr::random($this->items, $num, $preserveKeys);
-        if (is_array($result)) {
-            return new static($result);
-        }
-        return $result;
+        return $this->collect()->random($num, $preserveKeys);
     }
 
     /**
@@ -827,6 +823,138 @@ class LazyCollection implements Enumerable
     }
 
     /**
+     * Collapse the collection of items into a single array.
+     * 
+     * @return static
+     */
+    public function collapse(): static
+    {
+        return new static(function () {
+            foreach ($this as $values) {
+                if (is_array($values) || $values instanceof Enumerable) {
+                    foreach ($values as $value) {
+                        yield $value;
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Creates a collection by using this collection for keys and another for its values.
+     * 
+     * @param iterable $values
+     * @return static|false
+     */
+    public function combine(iterable $values): static|false
+    {
+        return new static(function () use ($values) {
+            $values = $this->makeIterator($values);
+
+            $errorMessage = 'Both parameters should have an equal number of elements';
+            
+            foreach ($this as $key) {
+                if (! $values->valid()) {
+                    trigger_error($errorMessage, E_USER_WARNING);
+                    break;
+                }
+                yield $key => $values->current();
+                $values->next();
+            }
+
+            if ($values->valid()) {
+                trigger_error($errorMessage, E_USER_WARNING);
+            }
+        });
+    }
+
+    /**
+     * Push all of the given items onto the collection.
+     * 
+     * @param iterable $items
+     * @return static
+     */
+    public function concat(iterable $items): static
+    {
+        return (new static(function () use ($items) {
+            yield from $this;
+            yield from $items;
+        }))->values();
+    }
+
+    /**
+     * Determine if an item exists in the collection.
+     * 
+     * @param mixed $key
+     * @param mixed $value
+     * @param bool $strict
+     * @return bool
+     */
+    public function contains(mixed $key, mixed $value = null, bool $strict = false): bool
+    {
+        $operator = $strict ? '===' : '==';
+        if (func_num_args() === 1) {
+            if (is_callable($key)) {
+                $callback = $key;
+            } else {
+                $callback = function ($item) use ($key, $operator) {
+                    return $this->compare($item, $operator, $key);
+                };
+            }
+        } else {
+            $segments = $this->explodeKey($key);
+            $callback = function ($item) use ($segments, $value, $operator) {
+                $childItem = extract_item($item, $segments);
+                return $childItem !== $item && $this->compare($childItem, $operator, $value);
+            };
+        }
+        foreach ($this as $key => $item) {
+            if ($callback($item, $key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Replace the collection items with the given items.
+     * 
+     * @param iterable $items
+     * @return static
+     */
+    public function replace(iterable $items): static
+    {
+        return new static(function () use ($items) {
+            $items = $this->getArrayableItems($items);
+
+            foreach ($this as $key => $value) {
+                if (array_key_exists($key, $items)) {
+                    yield $key => $items[$key];
+
+                    unset($items[$key]);
+                } else {
+                    yield $key => $value;
+                }
+            }
+
+            foreach ($items as $key => $value) {
+                yield $key => $value;
+            }
+        });
+    }
+
+    /**
+     * Recursively replace the collection items with the given items.
+     * 
+     * @param iterable $items
+     * @param static
+     */
+    public function replaceRecursive(iterable $items): static
+    {
+        return $this->passthrough('replaceRecursive', [$items]);
+    }
+
+    /**
      * Sort the lazy collection.
      * 
      * @param bool $descending
@@ -949,7 +1077,7 @@ class LazyCollection implements Enumerable
             } else {
                 $keys = Arr::flip($keys);
                 foreach ($this as $key => $value) {
-                    if (isset($keys[$key])) {
+                    if (array_key_exists($key, $keys)) {
                         yield $key => $value;
                         unset($keys[$key]);
                         if (empty($keys)) {

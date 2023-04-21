@@ -103,6 +103,18 @@ trait EnumeratesValues
     }
 
     /**
+     * Determine if an item exists using strict comparison.
+     * 
+     * @param mixed $key
+     * @param mixed $value
+     * @return bool
+     */
+    public function containsStrict(mixed $key, mixed $value = null): bool
+    {
+        return $this->contains($key, $value, true);
+    }
+
+    /**
      * Get the first item in the collection, but only if exactly one item exists. Otherwise, throw an exception.
      * 
      * @param string|callable|null $key
@@ -187,11 +199,10 @@ trait EnumeratesValues
      */
     public function mapSpread(callable $callback): static
     {
-        return new static(Arr::map(function ($chunk, $key) use ($callback) {
+        return $this->map(function ($chunk, $key) use ($callback) {
             $chunk[] = $key;
-
             return $callback(...$chunk);
-        }, $this->items));
+        });
     }
 
     /**
@@ -499,6 +510,7 @@ trait EnumeratesValues
      * @param string|int $key
      * @param string $value
      * @param bool $strict
+     * @return static
      */
     public function whereLike(string|int $key, string $value, bool $strict = false): static
     {
@@ -854,7 +866,7 @@ trait EnumeratesValues
                 }
             } else {
                 foreach ($this as $item) {
-                    if (isset($item[$key]) && !$this->compare($item[$key], $operator, $value)) {
+                    if (array_key_exists($key, $item) && !$this->compare($item[$key], $operator, $value)) {
                         return false;
                     }
                 }

@@ -55,7 +55,7 @@ class Collection implements ArrayAccess, Enumerable
      */
     public function get(string|int $key, mixed $default = null): mixed
     {
-        if (isset($this->items[$key])) {
+        if (array_key_exists($key, $this->items)) {
             return $this->items[$key];
         }
         return $this->getValue($default);
@@ -70,7 +70,7 @@ class Collection implements ArrayAccess, Enumerable
     public function has(string|int ...$keys): bool
     {
         foreach ($keys as $key) {
-            if (!isset($this->items[$key])) {
+            if (!array_key_exists($key, $this->items)) {
                 return false;
             }
         }
@@ -86,7 +86,7 @@ class Collection implements ArrayAccess, Enumerable
     public function hasAny(string|int ...$keys): bool
     {
         foreach ($keys as $key) {
-            if (isset($this->items[$key])) {
+            if (array_key_exists($key, $this->items)) {
                 return true;
             }
         }
@@ -867,9 +867,9 @@ class Collection implements ArrayAccess, Enumerable
      * Creates a collection by using this collection for keys and another for its values.
      * 
      * @param iterable $values
-     * @return static|false
+     * @return static
      */
-    public function combine(iterable $values): static|false
+    public function combine(iterable $values): static
     {
         return new static(Arr::combine($this->items, $values));
     }
@@ -924,37 +924,25 @@ class Collection implements ArrayAccess, Enumerable
     }
 
     /**
-     * Determine if an item exists using strict comparison.
-     * 
-     * @param mixed $key
-     * @param mixed $value
-     * @return bool
-     */
-    public function containsStrict(mixed $key, mixed $value = null): bool
-    {
-        return $this->contains($value, $key, true);
-    }
-
-    /**
      * Replace the collection items with the given items.
      * 
-     * @param mixed $items
+     * @param iterable $items
      * @return static
      */
-    public function replace(mixed $items): static
+    public function replace(iterable $items): static
     {
-        return new static(Arr::replace($this->items, $this->getArrayableItems($items)));
+        return new static(Arr::replace($this->items, $items));
     }
 
     /**
      * Recursively replace the collection items with the given items.
      * 
-     * @param mixed $items
+     * @param iterable $items
      * @param static
      */
-    public function replaceRecursive(mixed $items): static
+    public function replaceRecursive(iterable $items): static
     {
-        return new static(Arr::replaceRecursive($this->items, $this->getArrayableItems($items)));
+        return new static(Arr::replaceRecursive($this->items, $items));
     }
 
     /**

@@ -23,7 +23,7 @@ class Arr
      */
     public static function get(ArrayAccess|array $array, string|int $key, mixed $default = null): mixed
     {
-        if (isset($array[$key])) {
+        if (array_key_exists($key, $array)) {
             return $array[$key];
         }
 
@@ -93,7 +93,7 @@ class Arr
     public static function forget(ArrayAccess|array &$array, string|int ...$keys): void
     {
         foreach ($keys as $key) {
-            if (isset($array[$key])) {
+            if (array_key_exists($key, $array)) {
                 unset($array[$key]);
             }
 
@@ -648,10 +648,9 @@ class Arr
 
         foreach ($array as $values) {
             $values = self::getArrayableItems($values);
-            if (!is_array($values)) {
-                continue;
+            if (is_array($values)) {
+                $results[] = $values;
             }
-            $results[] = $values;
         }
 
         return array_merge([], ...$results);
@@ -662,15 +661,12 @@ class Arr
      * 
      * @param iterable $keys
      * @param iterable $values
-     * @return array|false
+     * @return array
      */
-    public static function combine(iterable $keys, iterable $values): array|false
+    public static function combine(iterable $keys, iterable $values): array
     {
         $keys = self::getArrayableItems($keys);
         $values = self::getArrayableItems($values);
-        if (!is_array($keys) || !is_array($values)) {
-            return false;
-        }
         return array_combine($keys, $values);
     }
 
